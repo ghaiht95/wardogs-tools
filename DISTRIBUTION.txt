@@ -25,3 +25,8 @@ licenses.
 The application depends on third-party software with separate licenses.
 Review the applicable notices, licenses, and redistribution obligations for
 Qt/PySide6, Tesseract and its bundled native libraries before redistribution.
+
+The packaged application checks the latest public GitHub Release at startup.
+When a newer version is available, it asks before downloading and launching the
+installer. An internet connection is required; the installer still requests
+administrator permission when Windows requires it.

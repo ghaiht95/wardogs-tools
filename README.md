@@ -1,20 +1,20 @@
 # WarDogs Tools
 
-واجهة Windows مبنية بـ PySide6 لإدارة اختيار الفريق وAFK وTank والشراء السريع في WARDOGS. يعتمد التطبيق على التقاط الشاشة ومناطق وإحداثيات محددة؛ قد تحتاج إلى ضبطه حسب دقة العرض وتخطيط اللعبة.
+A Windows application built with PySide6 to manage team selection, AFK, Tank, and quick-buy features in WARDOGS. The application uses screen capture and fixed screen regions; you may need to adjust it for your display resolution and game layout.
 
-> **ملاحظة:** يتطلب التطبيق فتح اللعبة قبل تشغيل المهام. استخدام البرنامج يخضع لقواعد اللعبة وسياساتها.
+> **Note:** The game must be open before starting tasks. Use this application in accordance with the game's rules and policies.
 
-## المتطلبات
+## Requirements
 
-- Windows 10 أو أحدث، 64-bit.
-- Python 3.11 لتشغيل الشيفرة أو اختبارها.
-- تثبيت Tesseract OCR على جهاز التطوير؛ المسار الافتراضي هو `C:\Program Files\Tesseract-OCR\tesseract.exe`.
-- لتشغيل وظائف يد التحكم الافتراضية، يلزم ViGEmBus. يضم المثبّت المُنشأ MSI للتعريف، ويطلب صلاحيات المسؤول عند تثبيته.
-- Inno Setup 6 مطلوب لإنشاء ملف المثبّت.
+- Windows 10 or later, 64-bit.
+- Python 3.11 to run the source code or tests.
+- Tesseract OCR on the development machine. The default path is `C:\Program Files\Tesseract-OCR\tesseract.exe`.
+- ViGEmBus is required for virtual gamepad features. The generated installer bundles the driver MSI and requests administrator privileges when installing it.
+- Inno Setup 6 is required to build the installer.
 
-## تشغيل من الشيفرة
+## Run from source
 
-من PowerShell داخل مجلد المشروع:
+From PowerShell in the project directory:
 
 ```powershell
 python -m venv .venv
@@ -22,56 +22,58 @@ python -m venv .venv
 .\.venv\Scripts\python.exe .\app.py
 ```
 
-يحفظ التشغيل من الشيفرة الإعدادات في `wardogs_gui_config.json` بجذر المشروع. هذا الملف محلي ومضاف إلى `.gitignore`.
+When run from source, settings are stored in `wardogs_gui_config.json` in the project root. This local file is excluded by `.gitignore`.
 
-## الاختصارات الافتراضية
+## Default hotkeys
 
-| المفتاح | الوظيفة |
+| Key | Action |
 | --- | --- |
-| F6 | تبديل اختيار الفريق |
-| F5 | تشغيل/إيقاف Tank (يمكن تعطيل الاختصار من سويتش Tank) |
-| F7–F10 | الشراء السريع (يمكن تعطيل الأزرار والاختصارات من سويتش Quick Buy) |
-| End | إيقاف جميع المهام |
+| F6 | Toggle team selection |
+| F5 | Toggle Tank arrows (can be disabled with the Tank switch) |
+| F7–F10 | Quick buy (buttons and hotkeys can be disabled with the Quick Buy switch) |
+| End | Stop all tasks |
 
-يمكن تعطيل أتمتة اختيار الفريق وزر Start واختصار F6 من سويتش اختيار الفريق؛ يبقى اختيار اللون متاحاً. يمكن تغيير الاختصارات من تبويب الإعدادات، كما يمكن تشغيل AFK يدوياً من الواجهة.
+The team-selection switch disables its Start button and F6 hotkey while leaving the selected team available to change. Hotkeys can be changed in Settings. AFK can also be started manually from the UI.
 
-## الاختبار
+## Automatic updates
+
+The packaged application checks the latest public GitHub Release at startup. If a newer release is available, the application asks before downloading and launching `WarDogsTools-Setup.exe`. The downloaded file is checked against GitHub's SHA-256 asset digest. Windows may request administrator permission when the installer starts. An internet connection is required; if a release has no verified installer asset, the release page is opened instead.
+
+When publishing an update, increment `APP_VERSION` in `app.py` and `AppVersion` in `WarDogsTools.iss`, create a matching `vX.Y.Z` GitHub Release, and attach the installer with the exact name `WarDogsTools-Setup.exe`.
+
+## Tests
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-تُشغّل اختبارات GitHub Actions على Windows وPython 3.11 عند كل push وpull request.
+GitHub Actions runs the tests on Windows with Python 3.11 for each push and pull request.
 
-## إنشاء نسخة التوزيع
+## Build a distribution
 
-ثبت متطلبات البناء، ثم شغّل السكربت من PowerShell:
+Install the build dependencies, then run this from PowerShell:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
 .\build-release.ps1
 ```
 
-ينشئ هذا مجلد التطبيق في `dist\WarDogsTools`. لإنشاء المثبّت، ثبّت Inno Setup 6 ثم شغّل:
+This creates the application folder at `dist\WarDogsTools`. To create the installer, install Inno Setup 6 and run:
 
 ```powershell
 .\build-installer.ps1
 ```
 
-ينشأ المثبّت في `dist\WarDogsTools-Setup.exe`. لا ترفع ملفات `dist` أو `build` إلى مستودع الشيفرة؛ أرفق المثبّت بإصدار GitHub Releases عند الحاجة. يتطلب بناء التطبيق تثبيت Tesseract على جهاز البناء. يمكن تحديد مساره عبر متغير البيئة `TESSERACT_DIR`.
+The installer is created at `dist\WarDogsTools-Setup.exe`. Do not commit `dist` or `build` output to the source repository; attach the installer to a GitHub Release when appropriate. Tesseract must be installed on the build machine. Set the `TESSERACT_DIR` environment variable to use a non-default Tesseract location.
 
-للمزيد حول توزيع البرنامج والتبعيات، راجع [DISTRIBUTION.txt](DISTRIBUTION.txt) ورخصة ViGEmBus في `installer/licenses`.
+See [DISTRIBUTION.txt](DISTRIBUTION.txt) and the license files under `installer/licenses` for distribution notes and third-party notices.
 
-## ملفات المشروع
+## Project files
 
-- `app.py`: الواجهة الرئيسية المضمنة في التطبيق.
-- `auto.py` و`autobay/main.py` و`tank/tankauto-relod.py`: سكربتات مستقلة؛ لا تدخل في بناء الواجهة الرئيسية.
-- `tests/`: اختبارات الوحدة والتكامل.
+- `app.py`: the main UI included in the packaged application.
+- `auto.py`, `autobay/main.py`, and `tank/tankauto-relod.py`: standalone scripts; they are not included in the main UI build.
+- `tests/`: unit and integration tests.
 
-## الترخيص
+## License
 
-المشروع مرخّص وفق GNU General Public License v3.0؛ راجع [LICENSE](LICENSE). رخصة ViGEmBus المضمّنة تخص ذلك المكوّن فقط، ولا تستبدل ترخيص المشروع.
-
----
-
-**English summary:** Windows/PySide6 control panel for WARDOGS team selection, AFK, Tank, and quick-buy features. See the sections above for setup, tests, and packaging instructions.
+This project is licensed under the GNU General Public License v3.0; see [LICENSE](LICENSE). The included ViGEmBus license applies to that component only and does not replace the project's license.

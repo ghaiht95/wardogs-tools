@@ -6,19 +6,26 @@ Run:      python app.py
 """
 import json
 import ctypes
+import hashlib
 import os
 import random
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 from ctypes import wintypes
+from urllib.error import URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
 
-from PySide6.QtCore import QRectF, QSize, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPen, QPixmap
+from PySide6.QtCore import QRectF, QSize, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QIcon, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QButtonGroup, QCheckBox, QDoubleSpinBox, QFormLayout,
-    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QPlainTextEdit,
-    QPushButton, QSpinBox, QTabWidget, QToolButton, QVBoxLayout, QWidget,
+    QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
+    QPlainTextEdit, QPushButton, QSpinBox, QTabWidget, QToolButton, QVBoxLayout,
+    QWidget,
 )
 
 try:
@@ -29,6 +36,11 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TANK_DIR = os.path.join(BASE_DIR, "tank")
 IS_PACKAGED = getattr(sys, "frozen", False)
+APP_VERSION = "1.0.0"
+RELEASES_API_URL = "https://api.github.com/repos/ghaiht95/wardogs-tools/releases/latest"
+RELEASES_PAGE_URL = "https://github.com/ghaiht95/wardogs-tools/releases/latest"
+INSTALLER_ASSET_NAME = "WarDogsTools-Setup.exe"
+MAX_UPDATE_SIZE = 500 * 1024 * 1024
 CONFIG_PATH = (
     os.path.join(os.environ["LOCALAPPDATA"], "WarDogsTools", "wardogs_gui_config.json")
     if IS_PACKAGED else os.path.join(BASE_DIR, "wardogs_gui_config.json")
@@ -229,9 +241,211 @@ SCAN_INTERVAL = 0.05
 CLICK_INTERVAL = 0.3
 DEPLOYING_REGION = (713, 468, 985, 514)
 
+
+def version_tuple(version):
+    value = version.strip()
+    if value.startswith("v"):
+        value = value[1:]
+    parts = value.split(".")
+    if len(parts) != 3 or any(not part.isdecimal() for part in parts):
+        raise ValueError(f"Unsupported version: {version}")
+    return tuple(int(part) for part in parts)
+
+
+def parse_latest_release(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("GitHub returned an invalid release response")
+    tag = payload.get("tag_name")
+    if not isinstance(tag, str):
+        raise ValueError("GitHub release is missing a version tag")
+    version_tuple(tag)
+
+    release_url = payload.get("html_url")
+    if not isinstance(release_url, str):
+        release_url = ""
+    release_page = urlsplit(release_url or "")
+    if (
+        release_page.scheme != "https"
+        or release_page.hostname != "github.com"
+        or not release_page.path.startswith("/ghaiht95/wardogs-tools/releases/")
+    ):
+        release_url = RELEASES_PAGE_URL
+
+    assets = payload.get("assets", [])
+    if not isinstance(assets, list):
+        raise ValueError("GitHub release contains an invalid assets list")
+    installer = next(
+        (asset for asset in assets
+         if isinstance(asset, dict) and asset.get("name") == INSTALLER_ASSET_NAME),
+        None,
+    )
+    if installer is None:
+        return {
+            "tag": tag,
+            "url": release_url,
+            "installer_url": None,
+            "digest": None,
+        }
+
+    installer_url = installer.get("browser_download_url")
+    if not isinstance(installer_url, str):
+        raise ValueError("GitHub release is missing the installer download URL")
+    parsed_url = urlsplit(installer_url)
+    if (
+        parsed_url.scheme != "https"
+        or parsed_url.hostname != "github.com"
+        or not parsed_url.path.startswith("/ghaiht95/wardogs-tools/releases/download/")
+    ):
+        raise ValueError("GitHub release contains an unexpected installer URL")
+
+    digest = installer.get("digest")
+    if digest is not None and (
+        not isinstance(digest, str)
+        or not digest.startswith("sha256:")
+        or len(digest) != 71
+        or any(char not in "0123456789abcdefABCDEF" for char in digest[7:])
+    ):
+        raise ValueError("GitHub release contains an invalid installer checksum")
+
+    size = installer.get("size")
+    if isinstance(size, int) and size > MAX_UPDATE_SIZE:
+        raise ValueError("The published installer exceeds the download size limit")
+
+    return {
+        "tag": tag,
+        "url": release_url,
+        "installer_url": installer_url,
+        "digest": digest,
+    }
+
+
+def download_release_asset(url, digest, destination, cancel_event):
+    if not isinstance(url, str):
+        raise ValueError("The installer download URL is invalid")
+    parsed_url = urlsplit(url)
+    if (
+        parsed_url.scheme != "https"
+        or parsed_url.hostname != "github.com"
+        or not parsed_url.path.startswith("/ghaiht95/wardogs-tools/releases/download/")
+    ):
+        raise ValueError("Refusing to download an installer from an unexpected URL")
+    if not isinstance(digest, str) or not digest.startswith("sha256:") or len(digest) != 71:
+        raise ValueError("The release does not provide a SHA-256 checksum")
+
+    request = Request(url, headers={"User-Agent": "WarDogsTools-Updater"})
+    try:
+        with urlopen(request, timeout=10) as response:
+            final_url = urlsplit(response.geturl())
+            if (
+                final_url.scheme != "https"
+                or final_url.hostname not in {
+                    "github.com", "objects.githubusercontent.com",
+                    "release-assets.githubusercontent.com",
+                }
+            ):
+                raise ValueError("Installer download redirected to an unexpected host")
+
+            content_length = response.headers.get("Content-Length")
+            expected_size = int(content_length) if content_length else None
+            if expected_size is not None and expected_size > MAX_UPDATE_SIZE:
+                raise ValueError("The installer exceeds the download size limit")
+
+            hasher = hashlib.sha256()
+            downloaded = 0
+            cancelled = False
+            with open(destination, "wb") as target:
+                while True:
+                    if cancel_event.is_set():
+                        cancelled = True
+                        break
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    downloaded += len(chunk)
+                    if downloaded > MAX_UPDATE_SIZE:
+                        raise ValueError("The installer exceeds the download size limit")
+                    target.write(chunk)
+                    hasher.update(chunk)
+
+            if cancelled:
+                os.remove(destination)
+                return False
+            if expected_size is not None and downloaded != expected_size:
+                raise ValueError("The installer download was incomplete")
+            if f"sha256:{hasher.hexdigest()}" != digest.lower():
+                raise ValueError("The installer checksum does not match the release")
+        return True
+    except (OSError, ValueError, URLError):
+        try:
+            os.remove(destination)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 # =====================================================================
 # Workers
 # =====================================================================
+class UpdateCheckWorker(QThread):
+    checked = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.cancel_event = threading.Event()
+
+    def cancel(self):
+        self.cancel_event.set()
+
+    def run(self):
+        request = Request(
+            RELEASES_API_URL,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "WarDogsTools-Updater",
+            },
+        )
+        try:
+            with urlopen(request, timeout=10) as response:
+                payload_bytes = response.read(2 * 1024 * 1024 + 1)
+            if len(payload_bytes) > 2 * 1024 * 1024:
+                raise ValueError("GitHub release response is unexpectedly large")
+            release = parse_latest_release(json.loads(payload_bytes.decode("utf-8")))
+            if not self.cancel_event.is_set():
+                self.checked.emit(release)
+        except (OSError, ValueError, URLError) as exc:
+            if not self.cancel_event.is_set():
+                self.failed.emit(str(exc))
+
+
+class UpdateDownloadWorker(QThread):
+    downloaded = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, release, parent=None):
+        super().__init__(parent)
+        self.release = release
+        self.cancel_event = threading.Event()
+
+    def cancel(self):
+        self.cancel_event.set()
+
+    def run(self):
+        filename = f"WarDogsTools-Setup-{self.release['tag']}.exe"
+        destination = os.path.join(tempfile.gettempdir(), filename)
+        try:
+            if download_release_asset(
+                self.release["installer_url"],
+                self.release["digest"],
+                destination,
+                self.cancel_event,
+            ):
+                self.downloaded.emit(destination)
+        except (OSError, ValueError, URLError) as exc:
+            if not self.cancel_event.is_set():
+                self.failed.emit(str(exc))
+
+
 class BaseWorker(QThread):
     log = Signal(str)
     done = Signal()
@@ -681,6 +895,8 @@ class MainWindow(QMainWindow):
         self.toggle_buttons = {}
         self.supply_buttons = []
         self.hotkey_handles = []
+        self.update_check_worker = None
+        self.update_download_worker = None
         self.game_monitor = QTimer(self)
         self.game_monitor.setInterval(250)
         self.game_monitor.timeout.connect(self.check_game_windows)
@@ -723,6 +939,8 @@ class MainWindow(QMainWindow):
             self.log("[WARN] 'keyboard' package missing - global hotkeys disabled")
         else:
             self.register_hotkeys()
+        if IS_PACKAGED:
+            QTimer.singleShot(2000, self.check_for_updates)
 
     # ---- helpers -----------------------------------------------------
     def make(self, section, key, widget):
@@ -953,6 +1171,64 @@ class MainWindow(QMainWindow):
             self.stop("bay")
         self.refresh()
 
+    def check_for_updates(self):
+        if self.update_check_worker is not None and self.update_check_worker.isRunning():
+            return
+        worker = UpdateCheckWorker(self)
+        worker.checked.connect(self.on_update_check_complete)
+        worker.failed.connect(lambda message: self.log(f"[Update] Check failed: {message}"))
+        worker.finished.connect(lambda: setattr(self, "update_check_worker", None))
+        self.update_check_worker = worker
+        self.log("[Update] Checking for updates...")
+        worker.start()
+
+    def on_update_check_complete(self, release):
+        if version_tuple(release["tag"]) <= version_tuple(APP_VERSION):
+            self.log(f"[Update] You are using the latest version ({APP_VERSION})")
+            return
+
+        if not release["installer_url"] or not release["digest"]:
+            self.log(f"[Update] Version {release['tag']} is available without a verified installer")
+            QMessageBox.information(
+                self,
+                "Update available",
+                f"Version {release['tag']} is available. Open the release page to download it.",
+            )
+            if not QDesktopServices.openUrl(QUrl(release["url"])):
+                self.log("[Update] Could not open the GitHub release page")
+            return
+
+        answer = QMessageBox.question(
+            self,
+            "Update available",
+            f"WarDogs Tools {release['tag']} is available. Download and run its installer now?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.download_update(release)
+
+    def download_update(self, release):
+        if self.update_download_worker is not None and self.update_download_worker.isRunning():
+            return
+        worker = UpdateDownloadWorker(release, self)
+        worker.downloaded.connect(self.launch_update_installer)
+        worker.failed.connect(lambda message: self.log(f"[Update] Download failed: {message}"))
+        worker.finished.connect(lambda: setattr(self, "update_download_worker", None))
+        self.update_download_worker = worker
+        self.log(f"[Update] Downloading version {release['tag']}...")
+        worker.start()
+
+    def launch_update_installer(self, installer_path):
+        try:
+            subprocess.Popen([installer_path], close_fds=True)
+        except OSError as exc:
+            self.log(f"[Update] Could not launch installer: {exc}")
+            QMessageBox.warning(self, "Update failed", f"Could not launch the installer:\n{exc}")
+            return
+        self.log("[Update] Installer launched; Windows may request administrator permission")
+        self.close()
+
     def toggle(self, name):
         if self.is_active(name):
             self.stop(name)
@@ -1034,6 +1310,13 @@ class MainWindow(QMainWindow):
         self.stop_all()
         for worker in self.all_workers:
             worker.wait(3000)
+        for worker in (self.update_check_worker, self.update_download_worker):
+            if worker is not None and worker.isRunning():
+                worker.cancel()
+                if not worker.wait(15000):
+                    self.log("[Update] Wait for the update task to finish before closing")
+                    event.ignore()
+                    return
         for handle in self.hotkey_handles:
             try:
                 keyboard.remove_hotkey(handle)

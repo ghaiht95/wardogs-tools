@@ -1,6 +1,9 @@
 import copy
+import hashlib
 import json
 import os
+import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import Mock, mock_open, patch
@@ -508,6 +511,109 @@ class ControllerRestartTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "failed"):
                 app.restart_gamepad()
             self.assertIsNone(app._gamepad)
+
+
+class UpdateTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        cls.application = QApplication.instance() or QApplication([])
+
+    def test_release_parser_accepts_only_the_expected_installer_and_version(self):
+        digest = "a" * 64
+        payload = {
+            "tag_name": "v1.0.1",
+            "html_url": "https://github.com/ghaiht95/wardogs-tools/releases/tag/v1.0.1",
+            "assets": [{
+                "name": app.INSTALLER_ASSET_NAME,
+                "browser_download_url": (
+                    "https://github.com/ghaiht95/wardogs-tools/releases/download/"
+                    "v1.0.1/WarDogsTools-Setup.exe"
+                ),
+                "digest": f"sha256:{digest}",
+                "size": 1024,
+            }],
+        }
+
+        release = app.parse_latest_release(payload)
+        self.assertEqual(release["tag"], "v1.0.1")
+        self.assertEqual(release["digest"], f"sha256:{digest}")
+        self.assertEqual(app.version_tuple(release["tag"]), (1, 0, 1))
+
+        payload["assets"][0]["browser_download_url"] = "https://example.com/installer.exe"
+        with self.assertRaisesRegex(ValueError, "unexpected installer URL"):
+            app.parse_latest_release(payload)
+        with self.assertRaisesRegex(ValueError, "Unsupported version"):
+            app.version_tuple("latest")
+
+    def test_update_prompt_is_shown_only_for_a_newer_version(self):
+        with (
+            patch.object(app, "keyboard", None),
+            patch.object(app, "load_config", return_value=copy.deepcopy(app.DEFAULTS)),
+            patch.object(app.MainWindow, "save_config"),
+            patch.object(app.QMessageBox, "question", return_value=app.QMessageBox.StandardButton.No) as question,
+        ):
+            window = app.MainWindow()
+            try:
+                release = {
+                    "tag": "v1.0.0",
+                    "url": "https://github.com/ghaiht95/wardogs-tools/releases/latest",
+                    "installer_url": "https://github.com/ghaiht95/wardogs-tools/releases/download/v1.0.1/WarDogsTools-Setup.exe",
+                    "digest": "sha256:" + "a" * 64,
+                }
+                window.on_update_check_complete(release)
+                question.assert_not_called()
+
+                release["tag"] = "v1.0.1"
+                with patch.object(window, "download_update") as download:
+                    window.on_update_check_complete(release)
+                    question.assert_called_once()
+                    download.assert_not_called()
+            finally:
+                window.close()
+
+    def test_download_checks_digest_before_returning_installer(self):
+        data = b"installer payload"
+        expected_digest = "sha256:" + hashlib.sha256(data).hexdigest()
+
+        class FakeResponse:
+            headers = {"Content-Length": str(len(data))}
+
+            def __init__(self):
+                self.remaining = data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def geturl(self):
+                return "https://objects.githubusercontent.com/installer"
+
+            def read(self, size):
+                chunk, self.remaining = self.remaining[:size], self.remaining[size:]
+                return chunk
+
+        url = (
+            "https://github.com/ghaiht95/wardogs-tools/releases/download/"
+            "v1.0.1/WarDogsTools-Setup.exe"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            destination = os.path.join(directory, "WarDogsTools-Setup.exe")
+            with patch.object(app, "urlopen", return_value=FakeResponse()):
+                self.assertTrue(app.download_release_asset(
+                    url, expected_digest, destination, threading.Event(),
+                ))
+            with open(destination, "rb") as installer:
+                self.assertEqual(installer.read(), data)
+
+            with patch.object(app, "urlopen", return_value=FakeResponse()):
+                with self.assertRaisesRegex(ValueError, "checksum does not match"):
+                    app.download_release_asset(
+                        url, "sha256:" + "0" * 64, destination, threading.Event(),
+                    )
+            self.assertFalse(os.path.exists(destination))
 
 
 if __name__ == "__main__":
