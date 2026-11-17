@@ -29,6 +29,7 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "dist\WarDogsTools\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "installer\prerequisites\ViGEmBusSetup_x64.msi"; Flags: dontcopy
 Source: "installer\licenses\ViGEmBus-LICENSE.txt"; DestDir: "{app}\licenses"; Flags: ignoreversion
 

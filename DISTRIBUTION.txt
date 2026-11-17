@@ -19,6 +19,7 @@ Settings are stored in %LOCALAPPDATA%\WarDogsTools\wardogs_gui_config.json.
 Check the log in the program for errors. Tesseract and its English language
 data are bundled under _internal\tesseract; its license is in its doc folder.
 Python package metadata and included license files are in _internal.
+The project GPL-3.0 license is included as LICENSE beside the installed app.
 The ViGEmBus BSD-3-Clause license is displayed by Setup and installed under
 licenses.
 

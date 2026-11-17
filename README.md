@@ -64,7 +64,7 @@ This creates the application folder at `dist\WarDogsTools`. To create the instal
 .\build-installer.ps1
 ```
 
-The installer is created at `dist\WarDogsTools-Setup.exe`. Do not commit `dist` or `build` output to the source repository; attach the installer to a GitHub Release when appropriate. Tesseract must be installed on the build machine. Set the `TESSERACT_DIR` environment variable to use a non-default Tesseract location.
+The installer is created at `dist\WarDogsTools-Setup.exe`. The project license is copied into the distribution folder and installer. Do not commit `dist` or `build` output to the source repository; attach the installer to a GitHub Release when appropriate. Tesseract must be installed on the build machine. Set the `TESSERACT_DIR` environment variable to use a non-default Tesseract location.
 
 See [DISTRIBUTION.txt](DISTRIBUTION.txt) and the license files under `installer/licenses` for distribution notes and third-party notices.
 

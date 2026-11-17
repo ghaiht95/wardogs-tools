@@ -7,4 +7,5 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item "$PSScriptRoot\DISTRIBUTION.txt" "$PSScriptRoot\dist\WarDogsTools\DISTRIBUTION.txt"
+Copy-Item "$PSScriptRoot\LICENSE" "$PSScriptRoot\dist\WarDogsTools\LICENSE"
 Write-Host "Application folder: $PSScriptRoot\dist\WarDogsTools"
