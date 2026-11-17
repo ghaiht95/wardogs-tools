@@ -1,0 +1,10 @@
+PySide6
+keyboard
+pyautogui
+pydirectinput
+pillow
+pytesseract
+vgamepad
+opencv-python
+numpy
+mss

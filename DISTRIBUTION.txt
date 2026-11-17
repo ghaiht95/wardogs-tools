@@ -1,0 +1,27 @@
+WarDogs Tools - Windows
+
+Unzip the complete folder and run WarDogsTools.exe. Keep the _internal folder
+alongside the executable. Python and a separate Tesseract installation are not
+required.
+
+Requirements:
+- WARDOGS running on Windows. The Steam launch button requires Steam.
+- The WarDogs Tools Setup installer includes the signed ViGEmBus 1.22.0 driver
+  and installs it with administrator privileges if it is not already present.
+  Windows may request a restart. The driver is not removed when the app is
+  uninstalled because other applications may use it.
+- The portable ZIP does not install drivers; install ViGEmBus separately to use
+  its virtual controller, AFK and tank inputs.
+- The screen coordinates in the program were configured for a particular game
+  resolution and layout; they may need adjustment on different displays.
+
+Settings are stored in %LOCALAPPDATA%\WarDogsTools\wardogs_gui_config.json.
+Check the log in the program for errors. Tesseract and its English language
+data are bundled under _internal\tesseract; its license is in its doc folder.
+Python package metadata and included license files are in _internal.
+The ViGEmBus BSD-3-Clause license is displayed by Setup and installed under
+licenses.
+
+The application depends on third-party software with separate licenses.
+Review the applicable notices, licenses, and redistribution obligations for
+Qt/PySide6, Tesseract and its bundled native libraries before redistribution.
