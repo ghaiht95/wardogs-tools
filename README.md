@@ -33,7 +33,7 @@ When run from source, settings are stored in `wardogs_gui_config.json` in the pr
 | F7–F10 | Quick buy (buttons and hotkeys can be disabled with the Quick Buy switch) |
 | End | Stop all tasks |
 
-The team-selection switch disables its Start button and F6 hotkey while leaving the selected team available to change. Hotkeys can be changed in Settings. AFK can also be started manually from the UI.
+The team-selection switch only enables or disables the F6 hotkey; the Start button remains available. The selected team can be changed at any time. Hotkeys can be changed in Settings. AFK can also be started manually from the UI.
 
 ## Automatic updates
 

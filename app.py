@@ -36,7 +36,7 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TANK_DIR = os.path.join(BASE_DIR, "tank")
 IS_PACKAGED = getattr(sys, "frozen", False)
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 RELEASES_API_URL = "https://api.github.com/repos/ghaiht95/wardogs-tools/releases/latest"
 RELEASES_PAGE_URL = "https://github.com/ghaiht95/wardogs-tools/releases/latest"
 INSTALLER_ASSET_NAME = "WarDogsTools-Setup.exe"
@@ -964,10 +964,9 @@ class MainWindow(QMainWindow):
         v = QVBoxLayout(page)
         v.addLayout(self.control_row("color", "Start"))
         team_selection = self.make("features", "team_selection_enabled", ToggleSwitch())
-        team_selection.setAccessibleName("Enable team selection")
-        team_selection.toggled.connect(self.set_team_selection_enabled)
+        team_selection.setAccessibleName("Enable team selection hotkey")
         team_selection_row = QHBoxLayout()
-        team_selection_row.addWidget(QLabel("Enable team selection"))
+        team_selection_row.addWidget(QLabel("Enable team selection hotkey"))
         team_selection_row.addWidget(team_selection)
         team_selection_row.addStretch()
         v.addLayout(team_selection_row)
@@ -1086,8 +1085,6 @@ class MainWindow(QMainWindow):
         for name, (button, start_text) in self.toggle_buttons.items():
             active = self.is_active(name)
             button.setText(("Stop AFK" if name == "afk" else "Stop") if active else start_text)
-            if name == "color":
-                button.setEnabled(self.team_selection_enabled())
             label = self.status_labels[name]
             label.setText("RUNNING" if active else "STOPPED")
             label.setStyleSheet("color: #2e9e44; font-weight: bold;" if active else "color: #c0392b; font-weight: bold;")
@@ -1098,9 +1095,6 @@ class MainWindow(QMainWindow):
 
     # ---- worker control ---------------------------------------------
     def start(self, name, *args):
-        if name == "color" and not self.team_selection_enabled():
-            self.log("[GUI] Team selection is disabled")
-            return
         if name == "bay" and not self.quick_buy_enabled():
             self.log("[GUI] Quick buy is disabled")
             return
@@ -1157,11 +1151,6 @@ class MainWindow(QMainWindow):
 
     def team_selection_enabled(self):
         return read_widget(self.widgets[("features", "team_selection_enabled")])
-
-    def set_team_selection_enabled(self, enabled):
-        if not enabled:
-            self.stop("color")
-        self.refresh()
 
     def quick_buy_enabled(self):
         return read_widget(self.widgets[("features", "quick_buy_enabled")])
