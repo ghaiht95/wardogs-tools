@@ -36,7 +36,7 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TANK_DIR = os.path.join(BASE_DIR, "tank")
 IS_PACKAGED = getattr(sys, "frozen", False)
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 RELEASES_API_URL = "https://api.github.com/repos/ghaiht95/wardogs-tools/releases/latest"
 RELEASES_PAGE_URL = "https://github.com/ghaiht95/wardogs-tools/releases/latest"
 INSTALLER_ASSET_NAME = "WarDogsTools-Setup.exe"
@@ -517,7 +517,8 @@ class ColorWorker(BaseWorker):
         )
         ocr_config = "--psm 6"
         if IS_PACKAGED:
-            ocr_config += f' --tessdata-dir "{os.path.join(BASE_DIR, "tesseract", "tessdata")}"'
+            # Env var avoids quoting problems with spaces in the install path
+            os.environ["TESSDATA_PREFIX"] = os.path.join(BASE_DIR, "tesseract", "tessdata")
         c = self.cfg["color"]
         team = c["team"] if c["team"] in TEAM_COLORS else "green"
 

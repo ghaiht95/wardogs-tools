@@ -123,14 +123,15 @@ class ColorWorkerTests(unittest.TestCase):
         with (
             patch.object(app, "IS_PACKAGED", True),
             patch.object(app, "BUNDLED_TESSERACT", r"C:\bundle\tesseract\tesseract.exe"),
+            patch.dict(os.environ),
             patch.object(pytesseract.pytesseract, "tesseract_cmd", "original"),
             patch.object(ImageGrab, "grab", return_value=self.image),
             patch.object(pytesseract, "image_to_string", return_value="DEPLOYING") as ocr,
         ):
             self.worker.work()
             self.assertEqual(pytesseract.pytesseract.tesseract_cmd, r"C:\bundle\tesseract\tesseract.exe")
-            self.assertIn('--tessdata-dir', ocr.call_args.kwargs["config"])
-            self.assertIn(os.path.join(app.BASE_DIR, "tesseract", "tessdata"), ocr.call_args.kwargs["config"])
+            self.assertEqual(os.environ["TESSDATA_PREFIX"], os.path.join(app.BASE_DIR, "tesseract", "tessdata"))
+            self.assertNotIn('"', ocr.call_args.kwargs["config"])
 
     def test_legacy_config_cannot_override_deploying_region_or_word(self):
         saved = {"color": {"region": [1, 2, 3, 4], "keywords": "contract", "team": "red", "resume": True}}
